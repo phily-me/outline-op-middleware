@@ -1,0 +1,22 @@
+[project]
+name = "outline-op-middleware"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "mi-skam", email = "40042054+mi-skam@users.noreply.github.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.123.9",
+    "httpx>=0.28.1",
+    "python-dotenv>=1.2.1",
+    "uvicorn>=0.38.0",
+]
+
+[project.scripts]
+outline-op-middleware = "outline_op_middleware.main:app"
+
+[build-system]
+requires = ["uv_build>=0.8.22,<0.9.0"]
+build-backend = "uv_build"
