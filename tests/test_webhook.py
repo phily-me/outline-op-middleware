@@ -1,19 +1,25 @@
-#!/usr/bin/env python3
-"""Test script to simulate OpenProject webhook requests."""
+"""Test suite for OpenProject webhook integration."""
 
 import hmac
 import hashlib
 import json
-import httpx
 import os
+import pytest
 from dotenv import load_dotenv
+from fastapi.testclient import TestClient
+from outline_op_middleware.main import app
 
 load_dotenv()
 
-WEBHOOK_URL = "http://localhost:8001/webhook"
 WEBHOOK_SECRET = os.getenv("OP_WEBHOOK_SECRET")
 OP_CF_KB_REQUEST = os.getenv("OP_CF_KB_REQUEST")
 OP_CF_KB_LINK = os.getenv("OP_CF_KB_LINK")
+
+
+@pytest.fixture
+def client():
+    """Create a test client for the FastAPI application."""
+    return TestClient(app)
 
 
 def calculate_signature(payload_bytes: bytes) -> str:
@@ -21,35 +27,15 @@ def calculate_signature(payload_bytes: bytes) -> str:
     return hmac.new(WEBHOOK_SECRET.encode(), payload_bytes, hashlib.sha256).hexdigest()
 
 
-def send_webhook(payload: dict, description: str):
-    """Send a webhook request with proper signature."""
-    print(f"\n{'=' * 60}")
-    print(f"Test: {description}")
-    print(f"{'=' * 60}")
-
-    # Convert payload to JSON bytes
-    payload_json = json.dumps(payload)
-    payload_bytes = payload_json.encode("utf-8")
-
-    # Calculate signature
-    signature = calculate_signature(payload_bytes)
-
-    # Send request
-    headers = {"X-OP-Signature": signature, "Content-Type": "application/json"}
-
-    print(f"Payload: {json.dumps(payload, indent=2)}")
-    print(f"Signature: {signature}")
-
-    try:
-        response = httpx.post(WEBHOOK_URL, content=payload_bytes, headers=headers)
-        print(f"\nResponse Status: {response.status_code}")
-        print(f"Response Body: {json.dumps(response.json(), indent=2)}")
-    except Exception as e:
-        print(f"\nError: {e}")
+def test_health_check(client):
+    """Test health check endpoint returns correct status."""
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "service": "outline-op-middleware"}
 
 
-def test_valid_kb_request():
-    """Test Case 1: Valid KB request without existing link."""
+def test_valid_kb_request(client):
+    """Test valid KB request without existing link initiates processing."""
     payload = {
         "action": "work_package:updated",
         "work_package": {
@@ -64,11 +50,21 @@ def test_valid_kb_request():
             "_links": {"self": {"href": "/api/v3/work_packages/12345"}},
         },
     }
-    send_webhook(payload, "Valid KB Request (should process)")
+
+    payload_bytes = json.dumps(payload).encode("utf-8")
+    signature = calculate_signature(payload_bytes)
+    headers = {"X-OP-Signature": signature, "Content-Type": "application/json"}
+
+    response = client.post("/webhook", content=payload_bytes, headers=headers)
+
+    assert response.status_code == 200
+    json_response = response.json()
+    assert json_response["status"] == "processing_started"
+    assert json_response["wp_id"] == 12345
 
 
-def test_invalid_signature():
-    """Test Case 2: Invalid signature (should reject)."""
+def test_invalid_signature(client):
+    """Test webhook with invalid signature is rejected."""
     payload = {
         "action": "work_package:updated",
         "work_package": {
@@ -78,26 +74,20 @@ def test_invalid_signature():
         },
     }
 
-    print(f"\n{'=' * 60}")
-    print("Test: Invalid Signature (should reject)")
-    print(f"{'=' * 60}")
-
-    payload_json = json.dumps(payload)
+    payload_bytes = json.dumps(payload).encode("utf-8")
     headers = {
         "X-OP-Signature": "invalid_signature_here",
         "Content-Type": "application/json",
     }
 
-    try:
-        response = httpx.post(WEBHOOK_URL, content=payload_json, headers=headers)
-        print(f"Response Status: {response.status_code}")
-        print(f"Response Body: {response.text}")
-    except Exception as e:
-        print(f"Error: {e}")
+    response = client.post("/webhook", content=payload_bytes, headers=headers)
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid signature"}
 
 
-def test_kb_request_false():
-    """Test Case 3: KB request flag is false (should ignore)."""
+def test_kb_request_false(client):
+    """Test webhook with KB request flag false is ignored."""
     payload = {
         "action": "work_package:updated",
         "work_package": {
@@ -106,11 +96,21 @@ def test_kb_request_false():
             OP_CF_KB_REQUEST: False,
         },
     }
-    send_webhook(payload, "KB Request False (should ignore)")
+
+    payload_bytes = json.dumps(payload).encode("utf-8")
+    signature = calculate_signature(payload_bytes)
+    headers = {"X-OP-Signature": signature, "Content-Type": "application/json"}
+
+    response = client.post("/webhook", content=payload_bytes, headers=headers)
+
+    assert response.status_code == 200
+    json_response = response.json()
+    assert json_response["status"] == "ignored"
+    assert json_response["reason"] == "kb_request not set"
 
 
-def test_kb_link_exists():
-    """Test Case 4: KB link already exists (should ignore)."""
+def test_kb_link_exists(client):
+    """Test webhook with existing KB link is ignored."""
     payload = {
         "action": "work_package:updated",
         "work_package": {
@@ -120,11 +120,21 @@ def test_kb_link_exists():
             OP_CF_KB_LINK: "https://docs.example.com/existing-document",
         },
     }
-    send_webhook(payload, "KB Link Exists (should ignore)")
+
+    payload_bytes = json.dumps(payload).encode("utf-8")
+    signature = calculate_signature(payload_bytes)
+    headers = {"X-OP-Signature": signature, "Content-Type": "application/json"}
+
+    response = client.post("/webhook", content=payload_bytes, headers=headers)
+
+    assert response.status_code == 200
+    json_response = response.json()
+    assert json_response["status"] == "ignored"
+    assert json_response["reason"] == "kb_link already exists"
 
 
-def test_wrong_action():
-    """Test Case 5: Wrong action type (should ignore)."""
+def test_wrong_action_type(client):
+    """Test webhook with wrong action type is ignored."""
     payload = {
         "action": "work_package:created",
         "work_package": {
@@ -133,36 +143,42 @@ def test_wrong_action():
             OP_CF_KB_REQUEST: True,
         },
     }
-    send_webhook(payload, "Wrong Action Type (should ignore)")
+
+    payload_bytes = json.dumps(payload).encode("utf-8")
+    signature = calculate_signature(payload_bytes)
+    headers = {"X-OP-Signature": signature, "Content-Type": "application/json"}
+
+    response = client.post("/webhook", content=payload_bytes, headers=headers)
+
+    assert response.status_code == 200
+    json_response = response.json()
+    assert json_response["status"] == "ignored"
+    assert json_response["reason"] == "action 'work_package:created' not relevant"
 
 
-def test_health_check():
-    """Test Case 6: Health check endpoint."""
-    print(f"\n{'=' * 60}")
-    print("Test: Health Check Endpoint")
-    print(f"{'=' * 60}")
+def test_invalid_json_payload(client):
+    """Test webhook with invalid JSON payload returns 400."""
+    payload_bytes = b"invalid json {{"
+    signature = calculate_signature(payload_bytes)
+    headers = {"X-OP-Signature": signature, "Content-Type": "application/json"}
 
-    try:
-        response = httpx.get("http://localhost:8001/")
-        print(f"Response Status: {response.status_code}")
-        print(f"Response Body: {json.dumps(response.json(), indent=2)}")
-    except Exception as e:
-        print(f"Error: {e}")
+    response = client.post("/webhook", content=payload_bytes, headers=headers)
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Invalid JSON"}
 
 
-if __name__ == "__main__":
-    print("Starting Webhook Tests")
-    print(f"Target URL: {WEBHOOK_URL}")
-    print(f"Webhook Secret: {WEBHOOK_SECRET[:10]}...")
+def test_missing_signature_header(client):
+    """Test webhook without signature header is rejected."""
+    payload = {
+        "action": "work_package:updated",
+        "work_package": {"id": 12350, OP_CF_KB_REQUEST: True},
+    }
 
-    # Run all tests
-    test_health_check()
-    test_valid_kb_request()
-    test_invalid_signature()
-    test_kb_request_false()
-    test_kb_link_exists()
-    test_wrong_action()
+    payload_bytes = json.dumps(payload).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
 
-    print(f"\n{'=' * 60}")
-    print("All tests completed!")
-    print(f"{'=' * 60}")
+    response = client.post("/webhook", content=payload_bytes, headers=headers)
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid signature"}

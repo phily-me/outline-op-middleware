@@ -61,10 +61,28 @@ uv run uvicorn src.outline_op_middleware.main:app --host 0.0.0.0 --port 8000 --r
 # Build and run with docker-compose
 docker compose up --build
 
+# Run in detached mode
+docker compose up -d
+
+# View logs
+docker compose logs -f
+
+# Check health status
+docker compose ps
+
+# Stop service
+docker compose down
+
 # Or build and run manually
 docker build -t outline-op-middleware .
 docker run -p 8000:8000 --env-file .env outline-op-middleware
 ```
+
+**Docker Compose Features:**
+- Automatic health checks via `/` endpoint
+- Log rotation (10MB max, 3 files)
+- Auto-restart on failure
+- Optimized build caching with BuildKit
 
 ## Configuration
 
@@ -167,13 +185,85 @@ OpenProject webhook receiver.
 }
 ```
 
+## Deployment
+
+### Production Deployment
+
+```bash
+# Build and transfer deployment package to server
+just deploy user@server.com
+
+# This will:
+# 1. Build Docker image tagged with git hash (e.g., outline-op-middleware:e01c4a0)
+# 2. Save image to compressed tarball in dist/
+# 3. Transfer tarball to server at /tmp/
+
+# Then on the server, load and run:
+ssh user@server.com
+cd /tmp
+gunzip -c outline-op-middleware-e01c4a0-image.tar.gz | docker load
+docker run -d -p 8000:8000 --env-file .env outline-op-middleware:e01c4a0
+
+# Or use docker-compose for production:
+# Transfer docker-compose.prod.yml and .env to server
+scp docker-compose.prod.yml user@server.com:/path/to/deploy/docker-compose.yml
+scp .env user@server.com:/path/to/deploy/.env
+
+# On server:
+cd /path/to/deploy
+IMAGE_TAG=e01c4a0 PORT=8000 docker compose up -d
+```
+
+**Production docker-compose.prod.yml features:**
+- Pre-built image (no build context needed)
+- Health checks every 30s
+- Auto-restart on failure
+- Log rotation (10MB max, 3 files)
+- Configurable via IMAGE_TAG and PORT env vars
+
+**Adding 3rd party services** (e.g., Redis, PostgreSQL):
+
+Edit `docker-compose.prod.yml`:
+```yaml
+services:
+  outline-op-middleware:
+    # ... existing config ...
+    depends_on:
+      - redis
+      - postgres
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://postgres:5432/db
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  redis_data:
+  postgres_data:
+```
+
 ## Development
 
 ### Running Tests
 
 ```bash
-# Run webhook simulation tests
-uv run python tests/test_webhook.py
+# Run pytest tests
+just test
+
+# Run with coverage
+just test-cov
 ```
 
 ### Linting

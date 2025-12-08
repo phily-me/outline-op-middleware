@@ -24,14 +24,32 @@ This is a FastAPI-based middleware service that integrates OpenProject with Outl
 
 ## Development Commands
 
-**Install dependencies**:
+This project uses [just](https://github.com/casey/just) for task automation. Install just and run:
+
+**Setup and install dependencies**:
 ```bash
-uv sync --locked
+just setup
 ```
 
 **Run development server**:
 ```bash
-uv run uvicorn src.outline_op_middleware.main:app --host 0.0.0.0 --port 8000 --reload
+just run
+```
+
+**Run tests**:
+```bash
+just test           # Run pytest tests
+just test-cov       # Run tests with coverage reporting
+```
+
+**Lint and format code**:
+```bash
+just lint
+```
+
+**Build deployment package**:
+```bash
+just deploy <subdomain>
 ```
 
 **Run in Docker**:
@@ -39,9 +57,11 @@ uv run uvicorn src.outline_op_middleware.main:app --host 0.0.0.0 --port 8000 --r
 docker compose up --build
 ```
 
-**Run production server** (inside container or after uv sync):
+**Direct commands** (without just):
 ```bash
-uv run uvicorn src.outline_op_middleware.main:app --host 0.0.0.0 --port 8000
+uv sync                           # Install dependencies
+uv run uvicorn src.outline_op_middleware.main:app --host 0.0.0.0 --port 8000 --reload  # Run dev server
+uv run pytest tests/ -v           # Run tests
 ```
 
 ## Environment Configuration

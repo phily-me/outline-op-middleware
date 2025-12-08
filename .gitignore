@@ -11,3 +11,17 @@ wheels/
 
 # Secrets
 .env
+
+# Docker build artifacts
+*.tar.gz
+
+# Test coverage
+htmlcov/
+.coverage
+.pytest_cache/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
