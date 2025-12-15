@@ -1,0 +1,9 @@
+# Deploy-kit configuration for outline-op-middleware
+[deploy]
+name = "outline-op-middleware"
+port = 8001
+healthcheck_path = "/"
+keep_tarballs = 3
+architecture = "linux/amd64"
+ssh_target = "pme-dckr02-docker"
+portainer_url ="https://pmeefvl-dckr02.zameit.intra:9443"

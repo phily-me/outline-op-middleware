@@ -47,11 +47,6 @@ just test-cov       # Run tests with coverage reporting
 just lint
 ```
 
-**Build deployment package**:
-```bash
-just deploy <subdomain>
-```
-
 **Run in Docker**:
 ```bash
 docker compose up --build
@@ -63,6 +58,115 @@ uv sync                           # Install dependencies
 uv run uvicorn src.outline_op_middleware.main:app --host 0.0.0.0 --port 8000 --reload  # Run dev server
 uv run pytest tests/ -v           # Run tests
 ```
+
+## Deployment
+
+This project uses the deploy-kit toolkit for deployments. Deploy-kit is available in PATH via [.envrc](.envrc) (requires direnv).
+
+### Prerequisites
+
+**Install direnv** (if not already installed):
+```bash
+brew install direnv
+# Add to your shell config (e.g., ~/.zshrc):
+eval "$(direnv hook zsh)"
+```
+
+**Enable direnv for this project**:
+```bash
+cd outline-op-middleware
+direnv allow
+```
+
+This adds deploy-kit to your PATH automatically.
+
+### Deploy via Docker Compose (SSH)
+
+Deploy to a remote server using docker-compose:
+
+```bash
+# Via just
+just deploy-compose user@host.example.com
+
+# Direct command (pass SSH target)
+deploy-kit --compose user@host.example.com
+deploy-kit -c user@host                       # Short form
+
+# Or use environment variable
+export DEPLOY_TARGET=user@host.example.com
+deploy-kit --compose
+```
+
+This will:
+1. Build Docker image with git hash tag
+2. Save image as tarball
+3. Transfer files to remote server via SCP
+4. Load image and start services via docker-compose
+5. Cleanup old tarballs
+
+### Deploy via Portainer API
+
+Deploy to Portainer for full GUI control (no "limited control" warning):
+
+```bash
+# Set API key (required)
+export PORTAINER_API_KEY=ptr_xxx
+
+# Via just (pass URL)
+just deploy-portainer https://portainer.example.com
+
+# Direct command (pass URL)
+deploy-kit --portainer https://portainer.example.com
+deploy-kit -p https://portainer.io            # Short form
+
+# Or use environment variable for URL
+export PORTAINER_URL=https://portainer.example.com
+deploy-kit --portainer
+```
+
+This will:
+1. Build Docker image
+2. Create or update stack via Portainer API
+3. Apply environment variables from [.env.sops](.env.sops)
+
+### SOPS Secret Management
+
+This project uses [SOPS](https://github.com/getsops/sops) for encrypting secrets with age encryption.
+
+**One-time setup**:
+
+```bash
+# Install SOPS and age
+brew install sops age
+
+# Generate age key
+age-keygen -o ~/.config/sops/age/keys.txt
+# Save the public key (age1xxx...) shown in output
+
+# Update .sops.yaml with your public key
+# Replace the placeholder age1xxx... with your actual public key
+```
+
+**Working with secrets**:
+
+```bash
+# Encrypt .env file (create .env.sops for git)
+just sops-encrypt
+
+# Edit encrypted file (SOPS opens editor)
+just sops-edit
+
+# Decrypt to view (don't commit .env!)
+sops -d .env.sops
+
+# Decrypt temporarily for local dev
+sops -d .env.sops > .env
+```
+
+**Important:**
+- [.env.sops](.env.sops) should be committed to git
+- `.env` is gitignored and should never be committed
+- Deploy-kit automatically detects and decrypts [.env.sops](.env.sops) during deployment
 
 ## Environment Configuration
 

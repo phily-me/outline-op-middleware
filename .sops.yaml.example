@@ -1,0 +1,21 @@
+# SOPS configuration for outline-op-middleware
+#
+# Setup instructions:
+# 1. Copy this file: cp .sops.yaml.example .sops.yaml
+# 2. Install sops and age: brew install sops age
+# 3. Generate your age key: age-keygen -o ~/.config/sops/age/keys.txt
+# 4. Replace <YOUR_AGE_PUBLIC_KEY> below with the public key from step 3
+#    (it looks like: age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx)
+# 5. Encrypt your secrets: just sops-encrypt
+#
+# Usage:
+#   just sops-encrypt    # Encrypt .env -> .env.sops
+#   just sops-decrypt    # Decrypt .env.sops -> .env
+#   just sops-edit       # Edit .env.sops (decrypts, opens editor, re-encrypts)
+#
+# Note: Commit .env.sops and .sops.yaml to git, but NEVER commit .env
+
+creation_rules:
+  - path_regex: \.env(\.sops)?$
+    age: >-
+      <YOUR_AGE_PUBLIC_KEY>

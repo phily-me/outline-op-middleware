@@ -1,26 +1,22 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
-
-# Virtual environments
+# Environment
+.env
 .venv
 
-# Secrets
-.env
+# Deploy-kit
+dist/
 
-# Docker build artifacts
-*.tar.gz
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
 
-# Test coverage
-htmlcov/
-.coverage
+# Testing
 .pytest_cache/
+.coverage
+htmlcov/
 
-# IDEs
+# IDE
 .vscode/
 .idea/
 *.swp

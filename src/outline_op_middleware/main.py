@@ -53,9 +53,14 @@ def verify_signature(payload_body: bytes, signature: str | None) -> bool:
     if not signature or not OP_WEBHOOK_SECRET:
         return False
 
-    expected = hmac.new(
-        OP_WEBHOOK_SECRET.encode(), payload_body, hashlib.sha256
-    ).hexdigest()
+    # OpenProject sends signature as "sha1=<hash>"
+    if signature.startswith("sha1="):
+        signature = signature[5:]  # Remove "sha1=" prefix
+        hash_func = hashlib.sha1
+    else:
+        hash_func = hashlib.sha256
+
+    expected = hmac.new(OP_WEBHOOK_SECRET.encode(), payload_body, hash_func).hexdigest()
 
     return hmac.compare_digest(expected, signature)
 
@@ -170,12 +175,16 @@ async def process_kb_request(payload: dict):
 @app.post("/webhook")
 async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
     """Webhook-Endpunkt für OpenProject."""
+    print("[WEBHOOK] Received POST request to /webhook")
+    print(f"[WEBHOOK] Headers: {dict(request.headers)}")
 
     # 1. Raw body für Signatur-Prüfung
     body = await request.body()
+    print(f"[WEBHOOK] Body length: {len(body)} bytes")
 
     # 2. Signatur verifizieren
     signature = request.headers.get("X-OP-Signature")
+    print(f"[WEBHOOK] Signature: {signature}")
     if not verify_signature(body, signature):
         print("Webhook-Signatur ungültig")
         raise HTTPException(status_code=401, detail="Invalid signature")
@@ -187,15 +196,20 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=400, detail="Invalid JSON")
 
     action = payload.get("action")
+    print(f"[WEBHOOK] Action: {action}")
 
     # 4. Nur auf work_package:updated reagieren
     if action != "work_package:updated":
+        print(f"[WEBHOOK] Ignoring action: {action}")
         return {"status": "ignored", "reason": f"action '{action}' not relevant"}
 
     # 5. Prüfen ob "KB anfordern" == True
     wp = payload.get("work_package", {})
     kb_requested = wp.get(OP_CF_KB_REQUEST, False)
     kb_link_exists = wp.get(OP_CF_KB_LINK)
+    print(
+        f"[WEBHOOK] WP ID: {wp.get('id')}, KB requested: {kb_requested}, KB link exists: {bool(kb_link_exists)}"
+    )
 
     if not kb_requested:
         return {"status": "ignored", "reason": "kb_request not set"}
@@ -208,6 +222,12 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(process_kb_request, payload)
 
     return {"status": "processing_started", "wp_id": wp.get("id")}
+
+
+@app.get("/webhook")
+async def webhook_verification():
+    """Webhook verification endpoint for GET requests."""
+    return {"status": "ok", "message": "Webhook endpoint is active"}
 
 
 @app.get("/")

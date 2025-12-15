@@ -1,3 +1,4 @@
+name: outline-op-middleware
 services:
   outline-op-middleware:
     build: .
